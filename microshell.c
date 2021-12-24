@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <sys/time.h>
 #include <sys/wait.h>
-#include <stdio.h>
 
 static int fd = 0;
 static int has_fork = 0;
@@ -55,7 +54,7 @@ char *ft_strdup(char *src)
 char **create_command_tab(char **args)
 {
     int i = 0;
-    char **tab = malloc(sizeof(char *) * args_size(args));
+    char **tab = malloc(sizeof(char *) * (args_size(args) + 1));
     while (args[i])
     {
         if (ft_strcmp(args[i], "|") == 0 || ft_strcmp(args[i], ";") == 0)
@@ -67,27 +66,34 @@ char **create_command_tab(char **args)
     return (tab);
 }
 
-int exec_cmd(char **av, char *cmd, char **env, int pid)
+void ft_free(char **tab)
+{
+    int i = 0;
+    while (tab[i])
+    {
+        free(tab[i]);
+        i++;
+    }
+    free(tab);
+}
+
+int exec_cmd(char **av, char **env, int pid)
 {
     int ret = 1;
     int status = 0;
 
-    printf("hey");
     if (pid == -1)
         return (1);
     if (pid == 0)
     {
         char **cmd_tab = create_command_tab(av);
-        if ((ret = execve(cmd, cmd_tab, env)) == -1)
+        if ((ret = execve(av[0], cmd_tab, env)) == -1)
         {
-            free(cmd_tab);
+            ft_free(cmd_tab);
             exit(1);
         }
-    /*    for (int x = 0; x < 2; x++)
-            printf("cmd_tab %s\n", cmd_tab[x]);
-        printf("cmd %s\n", cmd);
-        free(cmd_tab);
-    */    exit(ret);
+        ft_free(cmd_tab);
+        exit(ret);
     }
     else
     {
@@ -96,7 +102,7 @@ int exec_cmd(char **av, char *cmd, char **env, int pid)
             ret = WEXITSTATUS(status);
         close(fd); 
     }
-    exit(ret);
+    return (ret);
 }
 
 int do_pipe()
@@ -108,8 +114,10 @@ int do_pipe()
         if (dup2(fd, new_fd) == -1)
             exit(1);
         fd = 1;
+        return (pid);
     }
-    dup2(fd, new_fd);
+    if (dup2(fd, new_fd) == -1)
+        exit(1);
     fd = 0;
     return (pid);
 }
@@ -118,37 +126,34 @@ int do_cd(char **args)
 {
     int ret = 0;
     if (args[1] && (ret = chdir(args[1])) == -1)
-        exit(1);
-   // args = &args[1];
-    exit(ret);
+        return (1);
+    return (ret);
 }
 
 int catch_cmd(char **av, char *cmd, char **env)
 {
     int pid = 0;
 
-    printf("cmd %s\n", cmd);
     if (ft_strcmp(cmd, "|") == 0)
     {
         has_fork = 1;
         pid = do_pipe();
-        return (exec_cmd(av, cmd, env, pid));
+        return (exec_cmd(&av[1], env, pid));
     }
     if (ft_strcmp(cmd, ";") == 0)
         return (0);
     if (ft_strcmp(cmd, "cd") == 0)
     {
-        printf("la");
-        av = &av[1];
-        return (do_cd(av));
+        if (do_cd(av))
+            return (1);
+        return (0);
     }
     if (has_fork == 0)
     {
         has_fork = 1;
         pid = fork();
-        return (exec_cmd(av, cmd, env, pid));
     }
-    return (0);
+    return (exec_cmd(av, env, pid));
 }
 
 int parse_cmd(int ac, char **av, char **env)
@@ -160,6 +165,8 @@ int parse_cmd(int ac, char **av, char **env)
         if (catch_cmd(&av[i], av[i], env))
             return (1);
         i++;
+        while (av[i] && ft_strcmp(av[i], "cd") && ft_strcmp(av[i], "|") && ft_strcmp(av[i], ";"))
+            i++;
     }
     return (0);
 }
