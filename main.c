@@ -8,7 +8,20 @@
 static int fd = 0;
 static int has_pipe = 0;
 static int fd0[2] = {0, 1};
-static int fd1[2] = {1, 0};
+
+int ft_strlen(char *str)
+{
+    int i = 0;
+
+    while (str[i])
+        i++;
+    return i;
+}
+
+void ft_putstr_fd(int fd, char *str)
+{
+    write(fd, str, ft_strlen(str));
+}
 
 int ft_strcmp(char *s1, char *s2)
 {
@@ -27,15 +40,6 @@ int args_size(char **args)
 {
     int i = 0;
     while (args[i])
-        i++;
-    return i;
-}
-
-int ft_strlen(char *str)
-{
-    int i = 0;
-
-    while (str[i])
         i++;
     return i;
 }
@@ -87,43 +91,66 @@ int exec_cmd(char **av, char **env, int pid)
 
     if (has_pipe && fd == 0)
     {
-        close(1);
+     //   close(1);
         if (pipe(fd0))
+        {
+            ft_putstr_fd(2, "error: fatal\n");
 		    return (1);
+        }
     }
     else if (has_pipe)
     {
-        close(0);
-        if (pipe(fd1))
+     //   close(0);
+        if (pipe(fd0))
+        {
+            ft_putstr_fd(2, "error: fatal\n");
             return (1);
+        }
     }
     pid = fork();
     if (pid == -1)
+    {
+        ft_putstr_fd(2, "error: fatal\n");
         return (1);
+    }
     if (pid == 0)
     {
         if (has_pipe)
         {
             if (fd == 0)
             {
-                if (dup(fd) == -1)
+             //   close(1);
+                if ((fd = dup(0)) == -1)
+                {
+                    ft_putstr_fd(2, "error: fatal\n");
                     return (1);
-                fd = 1;
+                }
+                fd0[0] = 1;
+                fd0[1] = 0;
                 return (0);
             }
-            if (dup(fd) == -1)
+         //   close(0);
+            if ((fd = dup(1)) == -1)
+            {
+                ft_putstr_fd(2, "error: fatal\n");
                 return (1);
-            fd = 0;
-            has_pipe--;
+            }
+            fd0[0] = 0;
+            fd0[1] = 1;
         }
         char **cmd_tab = create_command_tab(av);
-        if ((ret = execve(av[0], cmd_tab, env)) == -1)
+        for (int x = 0; x < args_size(cmd_tab) + 1; x++)
+            printf("args %s\n", cmd_tab[x]);
+        if ((ret = execve(cmd_tab[0], cmd_tab, env)) == -1)
         {
+            ft_putstr_fd(2, "error: cannot execute ");
+            ft_putstr_fd(2, cmd_tab[0]);
+            ft_putstr_fd(2, "\n");
             ft_free(cmd_tab);
-            exit(1);
+            exit(status);
         }
         ft_free(cmd_tab);
-        exit(ret);
+        exit(status);
     }
     else
     {
@@ -131,7 +158,10 @@ int exec_cmd(char **av, char **env, int pid)
         if (WIFEXITED(status))
             ret = WEXITSTATUS(status);
         if (has_pipe)
+        {
             close(fd);
+            has_pipe--;
+        }
     }
     return (ret);
 }
@@ -140,22 +170,33 @@ int do_cd(char **args)
 {
     int ret = 0;
     if (args[1] && (ret = chdir(args[1])) == -1)
+    {
+        ft_putstr_fd(2, "error: cd: cannot change directory to ");
+        ft_putstr_fd(2, args[1]);
+        ft_putstr_fd(2, "\n");
         return (1);
+    }
+    if (args[1] && args[2] && ft_strcmp(args[2], ";"))
+    {
+        ft_putstr_fd(2, "error: cd: bad arguments\n");
+        return (1);
+    }
     return (ret);
 }
 
-int catch_cmd(char **av, char *cmd, char **env)
+int catch_cmd(char **av, char **env)
 {
     int pid = 0;
 
-    if (ft_strcmp(cmd, "|") == 0)
+    printf("CMD %s\n", av[0]);
+    if (ft_strcmp(av[0], "|") == 0)
     {
         has_pipe++;
-        return (exec_cmd(&av[1], env, pid));
-    }
-    if (ft_strcmp(cmd, ";") == 0)
         return (0);
-    if (ft_strcmp(cmd, "cd") == 0)
+    }
+    if (ft_strcmp(av[0], ";") == 0)
+        return (0);
+    if (ft_strcmp(av[0], "cd") == 0)
     {
         if (do_cd(av))
             return (1);
@@ -164,23 +205,34 @@ int catch_cmd(char **av, char *cmd, char **env)
     return (exec_cmd(av, env, pid));
 }
 
+int next_sep(char **args)
+{
+    int i = 0;
+
+    i++;
+    while (args[i] && ft_strcmp(args[i], ";") && ft_strcmp(args[i], "|"))
+        i++;
+    printf("next sep %d\n", i);
+    return (i + 1);
+}
+
 int parse_cmd(int ac, char **av, char **env)
 {
     int i = 1;
 
     while (i < ac)
     {
-        if (catch_cmd(&av[i], av[i], env) == 1)
+        printf("&av[i][0] %s\n", &av[i][0]);
+        if (&av[i][0] && catch_cmd(&av[i], env) == 1)
             return (1);
         i++;
-        while (av[i] && ft_strcmp(av[i], "cd") && ft_strcmp(av[i], "|") && ft_strcmp(av[i], ";"))
-            i++;
     }
     return (0);
 }
 
 int main(int ac, char **av, char **env)
 {
+    has_pipe = 0;
     if (ac < 2)
         return (0);
     return (parse_cmd(ac, av, env));
