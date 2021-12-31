@@ -5,9 +5,8 @@
 #include <sys/wait.h>
 #include <stdio.h>
 
-static int fd = 0;
-static int** fdtab = NULL;
-static int idx = 0;
+static int pipefd[2];
+static int altfd = 0;
 
 int ft_strlen(char *str)
 {
@@ -69,105 +68,12 @@ void ft_free(void **tab)
     free(tab);
 }
 
-void pipe_fds()
-{
-
-    pipe(fdtab[idx]);
-    
-        /*if (pipe(fd1) < 0 || pipe(fd2) < 0)
-            ft_putstr_fd(2, "error\n");
-    }
-    else
-    {
-        if (pipe(fd2) < 0 || pipe(fd1) < 0)
-            ft_putstr_fd(2, "error\n");
-    }*/
-}
-
-void dup_fds()
-{
-    printf("fd = %d\n", fd);
-    if (fd == 0)
-    {
-        int ret = dup2(fdtab[idx][1], 1);
-       close(fdtab[idx][0]);
-        printf("%d\n", ret);
-    }
-    else
-    {
-        printf("idx - 1%d\n", idx - 1);
-        int ret = dup2(fdtab[idx][0], 0);
-        close(fdtab[idx][1]);
-        printf("%d\n", ret);
-    }
-    
-    /*close(fd1[1]);
-    close(fd2[0]);
-
-    if (fd1[0] != STDIN_FILENO)
-    {
-        if (dup2(fd1[0], STDIN_FILENO) != STDIN_FILENO)
-            ft_putstr_fd(2, "error: fatal\n");
-        close(fd1[0]);
-    }
-    if (fd2[1] != STDOUT_FILENO)
-    {
-        if (dup2(fd2[1], STDOUT_FILENO) != STDOUT_FILENO)
-            ft_putstr_fd(2, "error: fatal\n");
-        close(fd2[1]);
-    }
-    }
-    else
-    {
-    close(fd2[0]);
-    close(fd1[1]);
-
-    if (fd2[1] != STDOUT_FILENO)
-    {
-        if (dup2(fd2[1], STDOUT_FILENO) != STDOUT_FILENO)
-            ft_putstr_fd(2, "error: fatal\n");
-        close(fd2[1]);
-    }
-    if (fd1[0] != STDIN_FILENO)
-    {
-        if (dup2(fd1[0], STDIN_FILENO) != STDIN_FILENO)
-            ft_putstr_fd(2, "error: fatal\n");
-        close(fd1[0]);
-    }*/ 
-}
-
-void close_fds()
-{
-    if (fd == 0)
-    {
-        close(fdtab[idx][1]);
-        fd = 1;
-    }
-    else
-    {
-        close(fdtab[idx][0]);
-        fd = 0;
-    }
-    idx++;
-    
-    /*close(fd1[0]);
-    close(fd2[1]);
-    }
-    else
-    {
-        close(fd2[1]);
-        close(fd1[0]);
-    }*/
-}
-
-int exec(char *cmd, char **av, char **env)
+int exec(char *cmd, char **av, char **env, int has_pipe)
 {
     int ret = 1;
     int status = 0;
     int pid = 0;
     
-  /*  if (has_pipe)
-        pipe_fds();*/
     pid = fork();
     if (pid == -1)
     {
@@ -176,8 +82,16 @@ int exec(char *cmd, char **av, char **env)
     }
     if (pid == 0)
     {
-     /*   if (has_pipe)
-            dup_fds();*/
+        if (has_pipe && altfd == 0)
+        {
+            close(pipefd[0]);
+            dup2(pipefd[1], 1);
+        }
+        else if (has_pipe)
+        {
+            close(pipefd[1]);
+            dup2(pipefd[0], 0);
+        }
         if ((ret = execve(cmd, av, env)) == -1)
         {
             ft_putstr_fd(2, "error: cannot execute ");
@@ -193,12 +107,22 @@ int exec(char *cmd, char **av, char **env)
     }
     else
     {
+        if (has_pipe && altfd == 0)
+        {
+            close(pipefd[0]);
+            close(pipefd[1]);
+        }
+        else if (has_pipe)
+        {
+            close(pipefd[1]);
+            close(pipefd[0]);
+        }
         waitpid(pid, &status, 0);
-     /*   if (has_pipe)
-            close_fds();*/
         if (WIFEXITED(status))
             ret = WEXITSTATUS(status);
     }
+    printf("altfd %d\n", altfd);
+    altfd = (altfd == 0) ? 1 : 0;
     return (ret);
 }
 
@@ -294,15 +218,17 @@ char*** parse_on_delimiter(int start, char** argv, char* delimiter)
     return (formatted_args);
 }
 
-int exec_pipes(char ***cmds_list, char **env)
+int exec_pipes(char ***cmds_list, char **env, int has_pipe)
 {
     int ret = 0;
     int i = 0;
 
     while (cmds_list[i])
     {
-        printf("cmds_list[i][0] %s\n", cmds_list[i][0]);
-        ret = exec(cmds_list[i][0], cmds_list[i], env);
+        pipe(pipefd);
+        for (int x = 0; x < args_size(cmds_list[i]); x++)
+            printf("cmds_list[x] %s\n", cmds_list[i][x]);
+        ret = exec(cmds_list[i][0], cmds_list[i], env, has_pipe);
         i++;
     }
     return (ret);
@@ -322,8 +248,11 @@ int main(int ac, char **av, char **env)
     while (cmds[i])
     {
         pipe_cmds = parse_on_delimiter(0, cmds[i], "|");
-        ret = exec_pipes(pipe_cmds, env);
-        while(pipe_cmds[x])
+        if (args_size(pipe_cmds[x]) != args_size(cmds[i]))
+            ret = exec_pipes(pipe_cmds, env, 1);
+        else
+            ret = exec_pipes(pipe_cmds, env, 0);
+        while (pipe_cmds[x])
         {
             ft_free(((void**)pipe_cmds)[x]);
             pipe_cmds[x] = NULL;
