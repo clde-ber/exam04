@@ -58,10 +58,10 @@ char *ft_strdup(char *src)
     return (dst);
 }
 
-void ft_free(void **tab, int size)
+void ft_free(void **tab)
 {
     int i = 0;
-    while (i < size)
+    while (tab[i])
     {
         free(tab[i]);
         i++;
@@ -314,7 +314,8 @@ int main(int ac, char **av, char **env)
     char ***pipe_cmds = NULL;
     int ret = 0;
     int i = 0;
-    (void)env;
+    int x = 0;
+    
     if (ac < 2)
         return (0);
     cmds = parse_on_delimiter(1, av, ";");
@@ -322,7 +323,24 @@ int main(int ac, char **av, char **env)
     {
         pipe_cmds = parse_on_delimiter(0, cmds[i], "|");
         ret = exec_pipes(pipe_cmds, env);
+        while(pipe_cmds[x])
+        {
+            ft_free(((void**)pipe_cmds)[x]);
+            pipe_cmds[x] = NULL;
+            x++;
+        }
+        free(pipe_cmds);
+        pipe_cmds = NULL;
+        x = 0;
         i++;
     }
+    while (cmds[x])
+    {
+        ft_free(((void**)cmds)[x]);
+        cmds[x] = NULL;
+        x++;
+    }
+    cmds = NULL;
+    free(cmds);
     return (ret);
 }
