@@ -5,12 +5,9 @@
 #include <sys/wait.h>
 #include <stdio.h>
 
-static int has_pipe = 0;
-static int idx = 0;
 static int fd = 0;
-static int fd1[2];
-static int fd2[2];
-static int *pipetab;
+static int** fdtab = NULL;
+static int idx = 0;
 
 int ft_strlen(char *str)
 {
@@ -61,26 +58,10 @@ char *ft_strdup(char *src)
     return (dst);
 }
 
-char **create_command_tab(char **args)
+void ft_free(void **tab, int size)
 {
     int i = 0;
-    char **tab = malloc(sizeof(char *) * (args_size(args) + 1));
-    while (args[i])
-    {
-        if (ft_strcmp(args[i], "|") == 0 || ft_strcmp(args[i], ";") == 0)
-            break ;
-        tab[i] = ft_strdup(args[i]);
-        i++;
-    }
-    tab[i] = NULL;
-    idx = i;
-    return (tab);
-}
-
-void ft_free(char **tab)
-{
-    int i = 0;
-    while (tab[i])
+    while (i < size)
     {
         free(tab[i]);
         i++;
@@ -88,25 +69,39 @@ void ft_free(char **tab)
     free(tab);
 }
 
-void pipe_fds(int in_or_out)
+void pipe_fds()
 {
-    if (in_or_out == 0)
-    {
-        if (pipe(fd1) < 0 || pipe(fd2) < 0)
+
+    pipe(fdtab[idx]);
+    
+        /*if (pipe(fd1) < 0 || pipe(fd2) < 0)
             ft_putstr_fd(2, "error\n");
     }
     else
     {
         if (pipe(fd2) < 0 || pipe(fd1) < 0)
             ft_putstr_fd(2, "error\n");
-    }
+    }*/
 }
 
-void dup_fds(int in_or_out)
+void dup_fds()
 {
-    if (in_or_out == 0)
+    printf("fd = %d\n", fd);
+    if (fd == 0)
     {
-    close(fd1[1]);
+        int ret = dup2(fdtab[idx][1], 1);
+       close(fdtab[idx][0]);
+        printf("%d\n", ret);
+    }
+    else
+    {
+        printf("idx - 1%d\n", idx - 1);
+        int ret = dup2(fdtab[idx][0], 0);
+        close(fdtab[idx][1]);
+        printf("%d\n", ret);
+    }
+    
+    /*close(fd1[1]);
     close(fd2[0]);
 
     if (fd1[0] != STDIN_FILENO)
@@ -138,32 +133,41 @@ void dup_fds(int in_or_out)
         if (dup2(fd1[0], STDIN_FILENO) != STDIN_FILENO)
             ft_putstr_fd(2, "error: fatal\n");
         close(fd1[0]);
-    }
-    }  
+    }*/ 
 }
 
-void close_fds(int in_or_out)
+void close_fds()
 {
-    if (in_or_out == 0)
+    if (fd == 0)
     {
-    close(fd1[0]);
+        close(fdtab[idx][1]);
+        fd = 1;
+    }
+    else
+    {
+        close(fdtab[idx][0]);
+        fd = 0;
+    }
+    idx++;
+    
+    /*close(fd1[0]);
     close(fd2[1]);
     }
     else
     {
         close(fd2[1]);
         close(fd1[0]);
-    }
+    }*/
 }
 
-int exec_cmd(char **av, char **env, int pid)
+int exec(char *cmd, char **av, char **env)
 {
     int ret = 1;
     int status = 0;
-
-    char **cmd_tab = create_command_tab(av);
-    if (has_pipe)
-        pipe_fds(fd);
+    int pid = 0;
+    
+  /*  if (has_pipe)
+        pipe_fds();*/
     pid = fork();
     if (pid == -1)
     {
@@ -172,16 +176,14 @@ int exec_cmd(char **av, char **env, int pid)
     }
     if (pid == 0)
     {
-        if (has_pipe)
-            dup_fds(fd);
-        for (int x = 0; x < args_size(cmd_tab) + 1; x++)
-            printf("args %s\n", cmd_tab[x]);
-        if ((ret = execve(cmd_tab[0], cmd_tab, env)) == -1)
+     /*   if (has_pipe)
+            dup_fds();*/
+        if ((ret = execve(cmd, av, env)) == -1)
         {
             ft_putstr_fd(2, "error: cannot execute ");
-            for (int x = 0; x < args_size(cmd_tab); x++)
+            for (int x = 0; x < args_size(av); x++)
             {
-                ft_putstr_fd(2, cmd_tab[x]);
+                ft_putstr_fd(2, av[x]);
                 ft_putstr_fd(2, " ");
             }
             ft_putstr_fd(2, "\n");
@@ -192,15 +194,11 @@ int exec_cmd(char **av, char **env, int pid)
     else
     {
         waitpid(pid, &status, 0);
-        if (has_pipe)
-        {
-            close_fds(fd);
-            has_pipe--;
-        }
+     /*   if (has_pipe)
+            close_fds();*/
         if (WIFEXITED(status))
             ret = WEXITSTATUS(status);
     }
-    ft_free(cmd_tab);
     return (ret);
 }
 
@@ -220,40 +218,6 @@ int do_cd(char **args)
         return (1);
     }
     return (ret);
-}
-
-int catch_cmd(char **av, char **env)
-{
-    int pid = 0;
-
-    printf("CMD %s\n", av[0]);
-    if (ft_strcmp(av[0], "|") == 0)
-    {
-        has_pipe++;
-        if (has_pipe > 1)
-            fd = (fd == 0) ? 1 : 0;
-        return (0);
-    }
-    if (ft_strcmp(av[0], ";") == 0)
-        return (0);
-    if (ft_strcmp(av[0], "cd") == 0)
-    {
-        if (do_cd(av))
-            return (1);
-        return (0);
-    }
-    return (exec_cmd(av, env, pid));
-}
-
-int next_sep(char **args)
-{
-    int i = 0;
-
-    i++;
-    while (args[i] && ft_strcmp(args[i], ";") && ft_strcmp(args[i], "|"))
-        i++;
-    printf("next sep %d\n", i);
-    return (i + 1);
 }
 
 char *ft_strjoin(char *s1, char *s2)
@@ -278,106 +242,87 @@ char *ft_strjoin(char *s1, char *s2)
     return (ret);
 }
 
-char **create_subtab(char **av, char* delimiter)
+char **create_subtab(char **av, int start, int i)
 {
-    int i = 0;
-    int j = 0;
-    if (ft_strcmp(av[i], delimiter) == 0)
-        i++;
-    char **tab = malloc(sizeof(char *) * (args_size(av) + 1));
-    while (av[i])
-    {
-        if (ft_strcmp(av[i], delimiter) == 0)
-            break ;
-        tab[j] = ft_strdup(av[i]);
-        i++;
-        j++;
-    }
-    tab[j] = NULL;
+    char **tab = NULL;
     int x = 0;
-        while (tab[x])
-        {
-            printf("tab[i] = %s\n", tab[x]);
-            x++;
-        }
+    
+    if (!(tab = malloc(sizeof(char *) * (i - start + 1))))
+        return (NULL);
+    while (start < i)
+    {
+        tab[x++] = ft_strdup(av[start]);
+        start++;
+    }
+    tab[x] = NULL;
     return (tab);
 }
 
-char ***parse_on_delimiter(int ac, char **av, char **env, char* delimiter)
+int count_elements(char **tab, char *element)
 {
-    (void)env;
-    (void)ac;
-    char ***tab = NULL;
     int i = 0;
-    int size = 1;
-    char **tmp = NULL;
+    int count = 0;
 
-    if (!(tab = malloc(sizeof(char **) * (ac))))
-        return (0);
-    if (!(pipetab = malloc(sizeof(int) * (ac))))
-        return (0);
-    for (int x = 0 ; x < ac - 1 ; x++)
-        pipetab[x] = 0;
-    while (size < ac - 1)
+    while (tab[i])
     {
-        if ((tab[i] = create_subtab(&av[size], delimiter)) == NULL)
-            return (NULL);
-        tmp = tab[i];
-        if ((tab[i] = create_subtab(tab[i], "|")) == NULL)
-            return (NULL);
-        printf("1 %d\n", args_size(tab[i]));
-        printf("2 %d\n", args_size(&av[size]));
-        if (args_size(tab[i]) != args_size(tmp))
-            pipetab[size - 1] = 1;
-        ft_free(tmp);
-        int x = 0;
-        while (tab[i][x])
-        {
-            printf("tab[i][x] = %s\n", tab[i][x]);
-            x++;
-        }
-        size += args_size(tab[i]) + 1;
-        printf("size %d\n", size);
+        if (ft_strcmp(tab[i], element) == 0)
+            count++;
         i++;
-        printf("**********\n");
     }
-    tab[i] = NULL;
-    return (tab);
+    return (++count);
+}
+
+char*** parse_on_delimiter(int start, char** argv, char* delimiter)
+{
+    char*** formatted_args = NULL;
+    int j = 0;
+    int i = 0;
+
+    if (!(formatted_args = malloc(sizeof(char **) * (count_elements(argv, delimiter) + 1))))
+        return (0);
+    for (i = 0; i < args_size(argv); i++)
+    {
+        if (ft_strcmp(argv[i], delimiter) == 0)
+        {
+            formatted_args[j] = create_subtab(argv, start, i);
+            j++;
+            start = i + 1;
+        }
+    }
+    formatted_args[j] = create_subtab(argv, start, i);
+    formatted_args[++j] = NULL;
+    return (formatted_args);
+}
+
+int exec_pipes(char ***cmds_list, char **env)
+{
+    int ret = 0;
+    int i = 0;
+
+    while (cmds_list[i])
+    {
+        printf("cmds_list[i][0] %s\n", cmds_list[i][0]);
+        ret = exec(cmds_list[i][0], cmds_list[i], env);
+        i++;
+    }
+    return (ret);
 }
 
 int main(int ac, char **av, char **env)
 {
-    int pid = 0;
+    char ***cmds = NULL;
+    char ***pipe_cmds = NULL;
     int ret = 0;
-    char ***tab = NULL;
     int i = 0;
-
+    (void)env;
     if (ac < 2)
         return (0);
-    tab = parse_on_delimiter(ac, av, env, ";");
-    while (tab[i])
+    cmds = parse_on_delimiter(1, av, ";");
+    while (cmds[i])
     {
-        if (ft_strcmp(tab[i][0], "cd") == 0)
-            ret = do_cd(tab[i]);
-        else
-        {
-            if (pipetab[i] || has_pipe)
-            {
-                has_pipe++;
-                if (i)
-                    fd = (fd == 0) ? 1 : 0;
-            }
-            printf("pipetab[i] %d\n", pipetab[i]);
-            ret = exec_cmd(tab[i], env, pid);
-        }
+        pipe_cmds = parse_on_delimiter(0, cmds[i], "|");
+        ret = exec_pipes(pipe_cmds, env);
         i++;
     }
-    i = 0;
-    while (tab[i])
-    {
-        ft_free(tab[i]);
-        i++;
-    }
-    free(tab);
     return (ret);
 }
