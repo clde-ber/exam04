@@ -7,6 +7,7 @@
 
 static int pipefd[2];
 static int altfd = 0;
+static int pipe_end = 0;
 
 int ft_strlen(char *str)
 {
@@ -72,8 +73,10 @@ int exec(char *cmd, char **av, char **env, int has_pipe)
 {
     int ret = 1;
     int status = 0;
-    int pid = 0;
+    pid_t pid = 0;
     
+    printf("has pipe %d\n", has_pipe);
+    printf("cmd %s\n", cmd);
     pid = fork();
     if (pid == -1)
     {
@@ -84,13 +87,13 @@ int exec(char *cmd, char **av, char **env, int has_pipe)
     {
         if (has_pipe && altfd == 0)
         {
-            close(pipefd[0]);
-            dup2(pipefd[1], 1);
+            printf("close 1%d\n", close(pipefd[1])); // je ferme l'extrémité d'écriture du pipe
+            printf("dup 0%d\n", dup2(pipefd[0], 0)); // je redirige l'extrémité de lecture du pipe vers le standard input
         }
         else if (has_pipe)
         {
-            close(pipefd[1]);
-            dup2(pipefd[0], 0);
+            printf("close 0%d\n", close(pipefd[0])); // je ferme l'extrémité de lecture du pipe
+            printf("dup 1%d\n", dup2(pipefd[1], 1)); // je redirige l'extrémité d'écriture du pipe vers le standard output
         }
         if ((ret = execve(cmd, av, env)) == -1)
         {
@@ -107,15 +110,14 @@ int exec(char *cmd, char **av, char **env, int has_pipe)
     }
     else
     {
-        if (has_pipe && altfd == 0)
+        printf("pipe_end %d\n", pipe_end);
+        if (has_pipe)
         {
-            close(pipefd[0]);
-            close(pipefd[1]);
-        }
-        else if (has_pipe)
-        {
-            close(pipefd[1]);
-            close(pipefd[0]);
+            if (!pipe_end)
+            {
+                printf("close 1%d\n", close(pipefd[0]));
+            }
+            printf("close 0%d\n", close(pipefd[1]));
         }
         waitpid(pid, &status, 0);
         if (WIFEXITED(status))
@@ -223,9 +225,13 @@ int exec_pipes(char ***cmds_list, char **env, int has_pipe)
     int ret = 0;
     int i = 0;
 
+    pipe_end = 0;
     while (cmds_list[i])
     {
-        pipe(pipefd);
+        if (has_pipe && !cmds_list[i + 1])
+            pipe_end = 1;
+        if (has_pipe)
+            pipe(pipefd);
         for (int x = 0; x < args_size(cmds_list[i]); x++)
             printf("cmds_list[x] %s\n", cmds_list[i][x]);
         ret = exec(cmds_list[i][0], cmds_list[i], env, has_pipe);
