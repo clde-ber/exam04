@@ -120,7 +120,8 @@ int exec(char *cmd, char **av, char **env, int has_pipe, int **pipefd, int i)
     }
     else
     {
-        close(pipefd[i - 1][1]);
+        if (has_pipe)
+            close(pipefd[i - 1][1]);
         waitpid(pid, &status, 0);
         if (WIFEXITED(status))
             ret = WEXITSTATUS(status);
