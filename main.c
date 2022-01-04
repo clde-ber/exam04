@@ -67,19 +67,6 @@ void ft_free(void **tab)
     }
     free(tab);
 }
-//raj le cd
-/*int exec(char *cmd, char **av, char **env, int *ret)
-{
-    if ((*ret = execve(cmd, av, env)) == -1)
-    {
-        ft_putstr_fd(2, "error: cannot execute ");
-        for (int x = 0; x < args_size(av); x++)
-        {
-            ft_putstr_fd(2, av[x]);
-            ft_putstr_fd(2, " ");
-        }
-    ft_putstr_fd(2, "\n");
-}*/
 
 int exec(char *cmd, char **av, char **env, int has_pipe, int **pipefd, int i)
 {
@@ -221,13 +208,6 @@ char*** parse_on_delimiter(int start, char** argv, char* delimiter)
     return (formatted_args);
 }
 
-void print_cmd_list(char **cmd_list)
-{
-    (void)cmd_list;
-   // for (int x = 0; x < args_size(cmd_list); x++)
-        ////printf("cmds_list[x] %s\n", cmd_list[x]);
-}
-
 int triple_tab_len(char ***args)
 {
     int i = 0;
@@ -237,7 +217,7 @@ int triple_tab_len(char ***args)
     return (i);
 }
 
-int exec_pipes(char ***cmds_list, char **env, int has_pipe)
+int exec_pipes(char ***cmds_list, char **env)
 {
     int ret = 0;
     int i = 0;
@@ -254,29 +234,22 @@ int exec_pipes(char ***cmds_list, char **env, int has_pipe)
             return (0);
     }
     pipe_start = 1;
-    if (has_pipe)
-        pipe(pipefd[i]);
-    if (has_pipe)
-        pipe(pipefd[i + 1]);
-    print_cmd_list(cmds_list[i]);
-    ret = exec(cmds_list[i][0], cmds_list[i], env, has_pipe, pipefd, i + 1);
+    pipe(pipefd[i]);
+    pipe(pipefd[i + 1]);
+    ret = exec(cmds_list[i][0], cmds_list[i], env, 1, pipefd, i + 1);
     i++;
     pipe_start = 0;
     while (cmds_list[i] && cmds_list[i + 1])
     {
-        if (has_pipe)
-            pipe(pipefd[i + 1]);
-        print_cmd_list(cmds_list[i]);
-        ret = exec(cmds_list[i][0], cmds_list[i], env, has_pipe, pipefd, i + 1);
+        pipe(pipefd[i + 1]);
+        ret = exec(cmds_list[i][0], cmds_list[i], env, 1, pipefd, i + 1);
         i++;
     }
     if (cmds_list[i])
     {
-        if (has_pipe)
-            pipe(pipefd[i + 1]);
+        pipe(pipefd[i + 1]);
         pipe_end = 1;
-        print_cmd_list(cmds_list[i]);
-        ret = exec(cmds_list[i][0], cmds_list[i], env, has_pipe, pipefd, i + 1);
+        ret = exec(cmds_list[i][0], cmds_list[i], env, 1, pipefd, i + 1);
     }
     for (int x = 0; x < len + 1; x++)
         free(pipefd[x]);
@@ -299,9 +272,9 @@ int main(int ac, char **av, char **env)
     {
         pipe_cmds = parse_on_delimiter(0, cmds[i], "|");
         if (args_size(pipe_cmds[x]) != args_size(cmds[i]) && ft_strcmp(pipe_cmds[x][0], "cd"))
-            ret = exec_pipes(pipe_cmds, env, 1);
+            ret = exec_pipes(pipe_cmds, env);
         else if (ft_strcmp(pipe_cmds[x][0], "cd"))
-            ret = exec_pipes(pipe_cmds, env, 0);
+            ret = exec(cmds[i][0], cmds[i], env, 0, NULL, 0);
         else
             ret = do_cd(pipe_cmds[x]);
         while (pipe_cmds[x])
