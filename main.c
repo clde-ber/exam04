@@ -297,10 +297,12 @@ int main(int ac, char **av, char **env)
     while (cmds[i])
     {
         pipe_cmds = parse_on_delimiter(0, cmds[i], "|");
-        if (args_size(pipe_cmds[x]) != args_size(cmds[i]))
+        if (args_size(pipe_cmds[x]) != args_size(cmds[i]) && ft_strcmp(pipe_cmds[x][0], "cd"))
             ret = exec_pipes(pipe_cmds, env, 1);
-        else
+        else if (ft_strcmp(pipe_cmds[x][0], "cd"))
             ret = exec_pipes(pipe_cmds, env, 0);
+        else
+            ret = do_cd(pipe_cmds[x]);
         while (pipe_cmds[x])
         {
             ft_free(((void**)pipe_cmds)[x]);
@@ -318,7 +320,7 @@ int main(int ac, char **av, char **env)
         cmds[x] = NULL;
         x++;
     }
-    cmds = NULL;
     free(cmds);
+    cmds = NULL;
     return (ret);
 }
